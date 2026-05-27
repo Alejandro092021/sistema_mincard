@@ -1,5 +1,5 @@
 # Interfaz Gráfica y Dashboards
-streamlit==1.35.0
+streamlit
 pandas==2.2.2
 
 # Ciencia de Datos y Gráficos
