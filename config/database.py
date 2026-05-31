@@ -99,7 +99,18 @@ def inicializar_sistema():
             motivo TEXT
         )
     ''')
+
+    # 9. NUEVA: Tabla de Catálogo de Cargos
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cargos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE
+        )
+    ''')
     
+    conn.commit()
+    conn.close()
+
     # =========================================================================
     # MEJORA: PRECARGA AUTOMÁTICA DE DATOS DESDE EL CSV MAESTRO
     # =========================================================================

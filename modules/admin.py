@@ -21,7 +21,7 @@ def ejecutar_query(query, params=(), retornar_datos=False):
     finally:
         conn.close()
 
-# --- VALIDACIÓN SEGURA DE COLUMNA (Evita el error 'duplicate column name') ---
+# --- VALIDACIÓN SEGURA DE COLUMNA Y TABLAS (Evita errores de migración) ---
 def inicializar_estructura_db():
     conn = conectar_db()
     cursor = conn.cursor()
@@ -30,6 +30,18 @@ def inicializar_estructura_db():
         conn.commit()
     except Exception:
         pass  # Si la columna ya existe en SQLite, ignora silenciosamente el error
+    
+    try:
+        # Creación automática y segura de la nueva tabla de cargos
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cargos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL UNIQUE
+            )
+        ''')
+        conn.commit()
+    except Exception:
+        pass
     finally:
         conn.close()
 
@@ -152,8 +164,9 @@ def render_admin():
     
     st.subheader("⚙️ Panel de Configuración Inicial (CRUD)")
     
-    tab_emp, tab_are, tab_tur, tab_maq, tab_ope = st.tabs([
-        "👤 Personal y MIN-CARD", "📍 Áreas", "⏰ Turnos", "🚜 Maquinaria", "🔧 Catálogo de Operaciones"
+    # Se añade la pestaña "Cargo" y se renombra la última a "Tarea/Actividad"
+    tab_emp, tab_are, tab_tur, tab_maq, tab_car, tab_ope = st.tabs([
+        "👤 Personal y MIN-CARD", "📍 Áreas", "⏰ Turnos", "🚜 Maquinaria", "🪪 Cargo", "🔧 Catálogo de Tareas/Actividades"
     ])
     
     # --- PESTAÑA ÁREAS ---
@@ -193,14 +206,26 @@ def render_admin():
         if df is not None and not df.empty: 
             st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # --- PESTAÑA CATÁLOGO DE OPERACIONES ---
+    # --- NUEVA PESTAÑA: CARGO ---
+    with tab_car:
+        with st.form("f_cargo", clear_on_submit=True):
+            nom_c = st.text_input("Nombre del Cargo Operativo (Ej: Perforador, Supervisor SSO, Ingeniero)")
+            if st.form_submit_button("Registrar Cargo") and nom_c:
+                ejecutar_query("INSERT INTO cargos (nombre) VALUES (?)", (nom_c.strip(),))
+                st.success("Cargo añadido con éxito al catálogo oficial.")
+                st.rerun()
+        df_c = ejecutar_query("SELECT id as 'ID', nombre as 'Cargo Operativo' FROM cargos", retornar_datos=True)
+        if df_c is not None and not df_c.empty:
+            st.dataframe(df_c, use_container_width=True, hide_index=True)
+
+    # --- PESTAÑA CATÁLOGO DE TAREAS/ACTIVIDADES (Antes Operaciones) ---
     with tab_ope:
         with st.form("f_ope", clear_on_submit=True):
-            ope = st.text_input("Nueva Operación/Función General (Ej: Carga y Voladura)")
-            if st.form_submit_button("Registrar Función") and ope:
+            ope = st.text_input("Nueva Tarea/Actividad General (Ej: Carga y Voladura, Mantenimiento)")
+            if st.form_submit_button("Registrar Tarea/Actividad") and ope:
                 ejecutar_query("INSERT INTO operaciones (nombre) VALUES (?)", (ope,))
-                st.success("Operación añadida al catálogo de trabajo.")
-        df = ejecutar_query("SELECT * FROM operaciones", retornar_datos=True)
+                st.success("Tarea/Actividad añadida al catálogo de trabajo.")
+        df = ejecutar_query("SELECT id as 'ID', nombre as 'Tarea / Actividad' FROM operaciones", retornar_datos=True)
         if df is not None and not df.empty: 
             st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -237,7 +262,7 @@ def render_admin():
                     m_sel = st.selectbox("Asignar Maquinaria", options=maquinas['id'].tolist(), format_func=lambda x: maquinas[maquinas['id']==x]['codigo_interno'].values[0])
                     
                     ops_seleccionadas = st.multiselect(
-                        "Asignar Operaciones del Día", 
+                        "Asignar Tareas/Actividades del Día", 
                         options=operaciones['id'].tolist() if operaciones is not None and not operaciones.empty else [],
                         format_func=lambda x: operaciones[operaciones['id']==x]['nombre'].values[0]
                     )
@@ -284,7 +309,7 @@ def render_admin():
                             nuevo_m_sel = st.selectbox("Maquinaria", options=maquinas['id'].tolist(), index=idx_maq, format_func=lambda x: maquinas[maquinas['id']==x]['codigo_interno'].values[0])
                             
                             nuevas_ops = st.multiselect(
-                                "Operaciones del Día", 
+                                "Tareas/Actividades del Día", 
                                 options=operaciones['id'].tolist() if operaciones is not None and not operaciones.empty else [],
                                 default=lista_ops_actuales,
                                 format_func=lambda x: operaciones[operaciones['id']==x]['nombre'].values[0]
@@ -303,7 +328,7 @@ def render_admin():
                                         ejecutar_query("INSERT INTO empleado_operaciones (empleado_uid, operacion_id) VALUES (?, ?)", (emp_uid, op_id))
                                     
                                     st.session_state.editing_uid = None
-                                    st.success("Cambios applied correctamente.")
+                                    st.success("Cambios aplicados correctamente.")
                                     st.rerun()
                             with col_b2:
                                 if st.form_submit_button("❌ Cancelar"):
