@@ -1,4 +1,6 @@
 import sqlite3
+import os
+import pandas as pd
 
 def conectar_db():
     return sqlite3.connect('mincard.db')
@@ -58,7 +60,7 @@ def inicializar_sistema():
         )
     ''')
 
-    # 6. NUEVA: Tabla intermedia para asignar Tareas/Operaciones del día a cada empleado
+    # 6. Tabla intermedia para asignar Tareas/Operaciones del día a cada empleado
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS empleado_operaciones (
             empleado_uid TEXT,
@@ -70,8 +72,94 @@ def inicializar_sistema():
         )
     ''')
     
+    # 7. Tabla Maestra de Perfiles MIN-CARD (Datos del Excel)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS perfiles_mincard (
+            codigo TEXT PRIMARY KEY,       
+            color TEXT,                     
+            cargo TEXT NOT NULL,            
+            area TEXT,                      
+            equipo TEXT,                    
+            maquinaria TEXT,                
+            funcion TEXT,                   
+            acceso TEXT,                    
+            restriccion TEXT                
+        )
+    ''')
+
+    # 8. Tabla de Historial de Accesos (Auditoría de validaciones)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS historial_accesos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            empleado_uid TEXT,
+            min_card_codigo TEXT,
+            zona_intentada TEXT NOT NULL,
+            fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resultado TEXT NOT NULL,         
+            motivo TEXT
+        )
+    ''')
+    
+    # =========================================================================
+    # MEJORA: PRECARGA AUTOMÁTICA DE DATOS DESDE EL CSV MAESTRO
+    # =========================================================================
+    cursor.execute("SELECT COUNT(*) FROM perfiles_mincard")
+    if cursor.fetchone()[0] == 0:
+        csv_path = "MINCAR.xlsx - MINCARD_COMPLETO.csv"
+        if os.path.exists(csv_path):
+            try:
+                df = pd.read_csv(csv_path)
+                for _, row in df.iterrows():
+                    codigo = str(row['MIN-CARD']).strip() if pd.notna(row['MIN-CARD']) else None
+                    if codigo:
+                        cursor.execute('''
+                            INSERT OR IGNORE INTO perfiles_mincard 
+                            (codigo, color, cargo, area, equipo, maquinaria, funcion, acceso, restriccion)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            codigo,
+                            str(row['Color']).strip() if pd.notna(row['Color']) else None,
+                            str(row['Cargo']).strip() if pd.notna(row['Cargo']) else "Sin Cargo",
+                            str(row['Área']).strip() if pd.notna(row['Área']) else None,
+                            str(row['Equipo']).strip() if pd.notna(row['Equipo']) else None,
+                            str(row['Maquinaria']).strip() if pd.notna(row['Maquinaria']) else None,
+                            str(row['Función']).strip() if pd.notna(row['Función']) else None,
+                            str(row['Acceso']).strip() if pd.notna(row['Acceso']) else None,
+                            str(row['Restricción']).strip() if pd.notna(row['Restricción']) else None
+                        ))
+                print("🟢 Base de datos sincronizada: Se han cargado los perfiles maestros con éxito.")
+            except Exception as e:
+                print(f"⚠️ Error al migrar datos iniciales: {e}")
+    # =========================================================================
+
     conn.commit()
     conn.close()
+
+# --- FUNCIONES HELPER PARA EL SISTEMA ---
+
+def registrar_intento_acceso(empleado_uid, min_card_codigo, zona, resultado, motivo):
+    """Guarda en la base de datos cada escaneo realizado."""
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO historial_accesos (empleado_uid, min_card_codigo, zona_intentada, resultado, motivo)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (empleado_uid, min_card_codigo, zona, resultado, motivo))
+    conn.commit()
+    conn.close()
+
+def obtener_perfil_mincard(codigo):
+    """Busca un perfil MIN-CARD directamente en la base de datos y lo devuelve como diccionario."""
+    conn = conectar_db()
+    conn.row_factory = sqlite3.Row 
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM perfiles_mincard WHERE codigo = ?", (codigo,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return dict(row)
+    return None
 
 if __name__ == "__main__":
     inicializar_sistema()
