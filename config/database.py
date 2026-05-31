@@ -108,11 +108,9 @@ def inicializar_sistema():
         )
     ''')
     
-    conn.commit()
-    conn.close()
-
     # =========================================================================
     # MEJORA: PRECARGA AUTOMÁTICA DE DATOS DESDE EL CSV MAESTRO
+    # (La conexión sigue abierta aquí, por lo que no lanzará error)
     # =========================================================================
     cursor.execute("SELECT COUNT(*) FROM perfiles_mincard")
     if cursor.fetchone()[0] == 0:
@@ -125,7 +123,7 @@ def inicializar_sistema():
                     if codigo:
                         cursor.execute('''
                             INSERT OR IGNORE INTO perfiles_mincard 
-                            (codigo, color, cargo, area, equipo, maquinaria, funcion, acceso, restriccion)
+                            (codigo, color, cargo, area, equipo, maquinaria, funcion, acceso, restriction)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             codigo,
@@ -143,6 +141,7 @@ def inicializar_sistema():
                 print(f"⚠️ Error al migrar datos iniciales: {e}")
     # =========================================================================
 
+    # UNICO CIERRE AL FINAL
     conn.commit()
     conn.close()
 
