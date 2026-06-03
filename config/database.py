@@ -2,10 +2,42 @@ import sqlite3
 import os
 import pandas as pd
 
+DB_NAME = "mincard.db"
+
 def conectar_db():
-    return sqlite3.connect('mincard.db')
+    """Establece la conexión con la base de datos SQLite configurando el row_factory."""
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row  # Permite mapear los resultados por nombre de columna
+    return conn
+
+def ejecutar_query(query, params=(), retornar_datos=False):
+    """
+    Ejecuta cualquier instrucción SQL de forma segura y centralizada.
+    - Si retornar_datos es True: Devuelve un DataFrame de Pandas (ideal para tus tablas de interfaz).
+    - Para inserciones/actualizaciones/eliminaciones: Devuelve True si se realizó con éxito o False si falló.
+    """
+    conn = conectar_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys = ON;")  # Forzar integridad de llaves foráneas
+        cursor.execute(query, params)
+        
+        if retornar_datos:
+            datos = cursor.fetchall()
+            columnas = [col[0] for col in cursor.description] if cursor.description else []
+            lista_datos = [list(row) for row in datos]
+            return pd.DataFrame(lista_datos, columns=columnas)
+            
+        conn.commit()
+        return True  # Devuelve True si la operación de escritura fue exitosa
+    except Exception as e:
+        print(f"❌ Error en la base de datos: {e}")
+        return False  # Devuelve False si hubo una violación de restricción (ej: UNIQUE constraint failed)
+    finally:
+        conn.close()
 
 def inicializar_sistema():
+    """Crea la base de datos y todas las tablas estructuradas desde cero."""
     conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute("PRAGMA foreign_keys = ON;")
@@ -115,7 +147,7 @@ def inicializar_sistema():
     ''')
     
     # =========================================================================
-    # MEJORA: PRECARGA AUTOMÁTICA DE DATOS DESDE EL CSV MAESTRO
+    # PRECARGA AUTOMÁTICA DE DATOS DESDE EL CSV MAESTRO
     # =========================================================================
     cursor.execute("SELECT COUNT(*) FROM perfiles_mincard")
     if cursor.fetchone()[0] == 0:
@@ -126,7 +158,6 @@ def inicializar_sistema():
                 for _, row in df.iterrows():
                     codigo = str(row['MIN-CARD']).strip() if pd.notna(row['MIN-CARD']) else None
                     if codigo:
-                        # CORREGIDO: 'restriccion' en lugar de 'restriction'
                         cursor.execute('''
                             INSERT OR IGNORE INTO perfiles_mincard 
                             (codigo, color, cargo, area, equipo, maquinaria, funcion, acceso, restriccion)
@@ -149,27 +180,21 @@ def inicializar_sistema():
     conn.commit()
     conn.close()
 
-# --- FUNCIONES HELPER PARA EL SISTEMA ---
+# --- FUNCIONES HELPER PARA EL SISTEMA REFACTORIZADAS ---
 
 def registrar_intento_acceso(empleado_uid, min_card_codigo, zona, resultado, motivo):
-    conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute('''
+    """Registra los eventos de entrada utilizando la función centralizada."""
+    query = '''
         INSERT INTO historial_accesos (empleado_uid, min_card_codigo, zona_intentada, resultado, motivo)
         VALUES (?, ?, ?, ?, ?)
-    ''', (empleado_uid, min_card_codigo, zona, resultado, motivo))
-    conn.commit()
-    conn.close()
+    '''
+    return ejecutar_query(query, (empleado_uid, min_card_codigo, zona, resultado, motivo))
 
 def obtener_perfil_mincard(codigo):
-    conn = conectar_db()
-    conn.row_factory = sqlite3.Row 
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM perfiles_mincard WHERE codigo = ?", (codigo,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        return dict(row)
+    """Busca un perfil MIN-CARD por su código de tarjeta y lo devuelve en formato diccionario."""
+    df = ejecutar_query("SELECT * FROM perfiles_mincard WHERE codigo = ?", (codigo,), retornar_datos=True)
+    if not df.empty:
+        return df.iloc[0].to_dict()
     return None
 
 if __name__ == "__main__":
