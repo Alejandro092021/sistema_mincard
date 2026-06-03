@@ -15,7 +15,8 @@ def inicializar_sistema():
         CREATE TABLE IF NOT EXISTS areas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT NOT NULL UNIQUE,
-            es_restringida INTEGER DEFAULT 0
+            es_restringida INTEGER DEFAULT 0,
+            activo INTEGER DEFAULT 1
         )
     ''')
     
@@ -25,7 +26,8 @@ def inicializar_sistema():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT NOT NULL UNIQUE,
             hora_inicio TEXT NOT NULL,
-            hora_fin TEXT NOT NULL
+            hora_fin TEXT NOT NULL,
+            activo INTEGER DEFAULT 1
         )
     ''')
     
@@ -34,15 +36,17 @@ def inicializar_sistema():
         CREATE TABLE IF NOT EXISTS maquinarias (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             modelo TEXT NOT NULL,
-            codigo_interno TEXT NOT NULL UNIQUE
+            codigo_interno TEXT NOT NULL UNIQUE,
+            activo INTEGER DEFAULT 1
         )
     ''')
 
-    # 4. Tabla Operaciones (Catálogo)
+    # 4. Tabla Operaciones (Catálogo de Tareas)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS operaciones (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL UNIQUE
+            nombre TEXT NOT NULL UNIQUE,
+            activo INTEGER DEFAULT 1
         )
     ''')
     
@@ -54,25 +58,26 @@ def inicializar_sistema():
             turno_id INTEGER,
             area_id INTEGER,
             maquinaria_id INTEGER,
+            activo INTEGER DEFAULT 1,
             FOREIGN KEY(turno_id) REFERENCES turnos(id),
             FOREIGN KEY(area_id) REFERENCES areas(id),
             FOREIGN KEY(maquinaria_id) REFERENCES maquinarias(id)
         )
     ''')
 
-    # 6. Tabla intermedia para asignar Tareas/Operaciones del día a cada empleado
+    # 6. Tabla intermedia 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS empleado_operaciones (
             empleado_uid TEXT,
             operacion_id INTEGER,
-            estado TEXT DEFAULT 'Pendiente', -- 'Realizada' o 'Pendiente'
+            estado TEXT DEFAULT 'Pendiente',
             PRIMARY KEY (empleado_uid, operacion_id),
             FOREIGN KEY(empleado_uid) REFERENCES empleados(uid_tarjeta) ON DELETE CASCADE,
             FOREIGN KEY(operacion_id) REFERENCES operaciones(id) ON DELETE CASCADE
         )
     ''')
     
-    # 7. Tabla Maestra de Perfiles MIN-CARD (Datos del Excel)
+    # 7. Tabla Maestra de Perfiles MIN-CARD 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS perfiles_mincard (
             codigo TEXT PRIMARY KEY,       
@@ -87,7 +92,7 @@ def inicializar_sistema():
         )
     ''')
 
-    # 8. Tabla de Historial de Accesos (Auditoría de validaciones)
+    # 8. Tabla de Historial de Accesos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS historial_accesos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,17 +105,17 @@ def inicializar_sistema():
         )
     ''')
 
-    # 9. NUEVA: Tabla de Catálogo de Cargos
+    # 9. Tabla de Catálogo de Cargos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cargos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL UNIQUE
+            nombre TEXT NOT NULL UNIQUE,
+            activo INTEGER DEFAULT 1
         )
     ''')
     
     # =========================================================================
     # MEJORA: PRECARGA AUTOMÁTICA DE DATOS DESDE EL CSV MAESTRO
-    # (La conexión sigue abierta aquí, por lo que no lanzará error)
     # =========================================================================
     cursor.execute("SELECT COUNT(*) FROM perfiles_mincard")
     if cursor.fetchone()[0] == 0:
@@ -121,9 +126,10 @@ def inicializar_sistema():
                 for _, row in df.iterrows():
                     codigo = str(row['MIN-CARD']).strip() if pd.notna(row['MIN-CARD']) else None
                     if codigo:
+                        # CORREGIDO: 'restriccion' en lugar de 'restriction'
                         cursor.execute('''
                             INSERT OR IGNORE INTO perfiles_mincard 
-                            (codigo, color, cargo, area, equipo, maquinaria, funcion, acceso, restriction)
+                            (codigo, color, cargo, area, equipo, maquinaria, funcion, acceso, restriccion)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             codigo,
@@ -139,16 +145,13 @@ def inicializar_sistema():
                 print("🟢 Base de datos sincronizada: Se han cargado los perfiles maestros con éxito.")
             except Exception as e:
                 print(f"⚠️ Error al migrar datos iniciales: {e}")
-    # =========================================================================
 
-    # UNICO CIERRE AL FINAL
     conn.commit()
     conn.close()
 
 # --- FUNCIONES HELPER PARA EL SISTEMA ---
 
 def registrar_intento_acceso(empleado_uid, min_card_codigo, zona, resultado, motivo):
-    """Guarda en la base de datos cada escaneo realizado."""
     conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute('''
@@ -159,14 +162,12 @@ def registrar_intento_acceso(empleado_uid, min_card_codigo, zona, resultado, mot
     conn.close()
 
 def obtener_perfil_mincard(codigo):
-    """Busca un perfil MIN-CARD directamente en la base de datos y lo devuelve como diccionario."""
     conn = conectar_db()
     conn.row_factory = sqlite3.Row 
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM perfiles_mincard WHERE codigo = ?", (codigo,))
     row = cursor.fetchone()
     conn.close()
-    
     if row:
         return dict(row)
     return None
