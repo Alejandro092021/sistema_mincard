@@ -63,6 +63,8 @@ def mostrar_modal_qr(empleado_datos):
         bg, txt, brd = "#f5e6d3", "#451a03", "#92400e"
     elif min_card.startswith("B"):
         bg, txt, brd = "#ffffff", "#0f172a", "#cbd5e1"
+    elif min_card.startswith("R"):
+        bg, txt, brd = "#fee2e2", "#991b1b", "#ef4444" # Fondo rojo claro, texto rojo oscuro, borde rojo
     else:
         bg, txt, brd = "#ffffff", "#111111", "#111111"
 
