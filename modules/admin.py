@@ -21,29 +21,6 @@ def ejecutar_query(query, params=(), retornar_datos=False):
     finally:
         conn.close()
 
-def inicializar_estructura_db():
-    conn = conectar_db()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("ALTER TABLE empleados ADD COLUMN area_restringida_id INTEGER DEFAULT 0;")
-        conn.commit()
-    except Exception:
-        pass 
-    
-    try:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS cargos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre TEXT NOT NULL UNIQUE,
-                activo INTEGER DEFAULT 1
-            )
-        ''')
-        conn.commit()
-    except Exception:
-        pass
-    finally:
-        conn.close()
-
 # --- MODAL: MUESTRA DATOS DE LA MIN-CARD Y PERMITE IMPRESIÓN/PDF ---
 @st.dialog("🪪 Vista de MIN-CARD Profesional")
 def mostrar_modal_qr(empleado_datos):
@@ -64,7 +41,7 @@ def mostrar_modal_qr(empleado_datos):
     elif min_card.startswith("B"):
         bg, txt, brd = "#ffffff", "#0f172a", "#cbd5e1"
     elif min_card.startswith("R"):
-        bg, txt, brd = "#fee2e2", "#991b1b", "#ef4444" # Fondo rojo claro, texto rojo oscuro, borde rojo
+        bg, txt, brd = "#fee2e2", "#991b1b", "#ef4444"
     else:
         bg, txt, brd = "#ffffff", "#111111", "#111111"
 
@@ -72,11 +49,12 @@ def mostrar_modal_qr(empleado_datos):
     area_restringida = empleado_datos.get('Área Restringida', 'Ninguna')
     tiene_restriccion = area_restringida and area_restringida != "Ninguna"
     
-    # Generación estructurada del Código QR
+    # Generación estructurada del Código QR (Incluyendo el ID BD)
     linea_restriccion = f"Zona Restringida: {area_restringida}\n" if tiene_restriccion else ""
     datos_para_qr = (
         f"=== MIN-CARD DIGITAL ===\n"
-        f"ID: {empleado_datos.get('MIN-CARD', 'N/A')}\n"
+        f"ID BD: {empleado_datos.get('ID', 'N/A')}\n"  
+        f"MIN-CARD: {empleado_datos.get('MIN-CARD', 'N/A')}\n"
         f"Trabajador: {empleado_datos.get('Nombre', 'N/A')}\n"
         f"Turno: {empleado_datos.get('Turno', 'N/A')}\n"
         f"Area Comun: {empleado_datos.get('Área', 'N/A')}\n"
@@ -95,263 +73,88 @@ def mostrar_modal_qr(empleado_datos):
     byte_im = buf.getvalue()
     qr_b64 = base64.b64encode(byte_im).decode("utf-8")
     
-    # Renderizado de la Tarjeta en pantalla con su color correspondiente
+    # Manejo de la Fotografía
+    foto_b64 = empleado_datos.get('Foto')
+    etiqueta_foto = f'<img class="profile-pic" src="data:image/jpeg;base64,{foto_b64}" />' if foto_b64 else '<div class="no-photo">Sin Foto</div>'
+
+    # Renderizado de la Tarjeta en pantalla
     st.markdown(
     f'<div style="background:{bg}; padding:20px; border:3px solid {brd}; border-radius:10px; color:{txt};"><h3>{empleado_datos.get("Nombre", "Sin nombre")}</h3></div>',
     unsafe_allow_html=True)
     
-    # HTML para impresión con forzado de colores de alto nivel
+    # HTML para impresión
     html_impresion = f"""
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-
 <style>
-
 @page {{
     size: landscape;
     margin: 8mm;
 }}
-
 body {{
-    margin:0;
-    padding:20px;
-    font-family: Arial, Helvetica, sans-serif;
-
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+    margin:0; padding:20px; font-family: Arial, Helvetica, sans-serif;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
 }}
-
 .card {{
-
-    width: 1100px;
-    min-height: 650px;
-
-    background:{bg};
-    color:{txt};
-
-    border:4px solid {brd};
-    border-radius:18px;
-
-    overflow:hidden;
-
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+    width: 1100px; min-height: 650px; background:{bg}; color:{txt};
+    border:4px solid {brd}; border-radius:18px; overflow:hidden;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
 }}
-
-.header {{
-
-    background:{brd};
-    color:white;
-
-    padding:18px 30px;
-
-    font-size:42px;
-    font-weight:bold;
-    letter-spacing:2px;
+.header {{ background:{brd}; color:white; padding:18px 30px; font-size:42px; font-weight:bold; letter-spacing:2px; }}
+.subheader {{ background:rgba(0,0,0,.08); padding:12px 30px; font-size:24px; font-weight:bold; }}
+.main {{ display:flex; justify-content:space-between; padding:30px; }}
+.info {{ width:60%; }}
+.info table {{ width:100%; border-collapse:collapse; }}
+.info td {{ padding:10px 5px; font-size:24px; }}
+.info .label {{ font-weight:bold; width:180px; }}
+.media-panel {{ 
+    width:35%; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
 }}
-
-.subheader {{
-
-    background:rgba(0,0,0,.08);
-
-    padding:12px 30px;
-
-    font-size:24px;
-    font-weight:bold;
+.profile-pic {{
+    width: 250px; height: 250px; object-fit: cover; border-radius: 15px; border: 4px solid {brd};
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1); background: white;
 }}
-
-.main {{
-
-    display:flex;
-    justify-content:space-between;
-
-    padding:30px;
+.no-photo {{
+    width: 250px; height: 250px; border-radius: 15px; border: 4px dashed {brd};
+    display:flex; align-items:center; justify-content:center; font-size: 20px; color: {brd}; margin-bottom: 15px;
 }}
-
-.info {{
-    width:60%;
-}}
-
-.info table {{
-    width:100%;
-    border-collapse:collapse;
-}}
-
-.info td {{
-    padding:10px 5px;
-    font-size:24px;
-}}
-
-.info .label {{
-    font-weight:bold;
-    width:180px;
-}}
-
-.qr-panel {{
-
-    width:35%;
-    text-align:center;
-}}
-
-.qr-panel img {{
-    width:250px;
-    background:white;
-    padding:10px;
-    border-radius:8px;
-}}
-
-.card-id {{
-
-    margin-top:20px;
-
-    font-size:42px;
-    font-weight:bold;
-
-    color:{txt};
-}}
-
+.media-panel .qr-code {{ width:150px; background:white; padding:10px; border-radius:8px; margin-top:20px; }}
+.card-id {{ margin-top:15px; font-size:42px; font-weight:bold; color:{txt}; }}
 .alert {{
-
-    margin-top:25px;
-
-    background:#ffebee;
-
-    color:#c62828;
-
-    border:2px solid #ef5350;
-
-    padding:15px;
-
-    border-radius:8px;
-
-    font-size:22px;
-    font-weight:bold;
-
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+    margin-top:25px; background:#ffebee; color:#c62828; border:2px solid #ef5350;
+    padding:15px; border-radius:8px; font-size:22px; font-weight:bold;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
 }}
-
-.footer {{
-
-    margin-top:20px;
-
-    background:{brd};
-
-    color:white;
-
-    text-align:center;
-
-    padding:12px;
-
-    font-size:18px;
-}}
-
-.badge {{
-
-    display:inline-block;
-
-    background:{brd};
-
-    color:white;
-
-    padding:6px 15px;
-
-    border-radius:30px;
-
-    font-size:16px;
-
-    margin-bottom:15px;
-}}
-
+.footer {{ margin-top:20px; background:{brd}; color:white; text-align:center; padding:12px; font-size:18px; }}
+.badge {{ display:inline-block; background:{brd}; color:white; padding:6px 15px; border-radius:30px; font-size:16px; margin-bottom:15px; }}
 </style>
-
 </head>
-
 <body onload="window.print()">
-
 <div class="card">
-
-    <div class="header">
-        POLIMETÁLICOS DEL NORTE S.A.C
-    </div>
-
-    <div class="subheader">
-        MIN - CARD DIGITAL
-    </div>
-
+    <div class="header">POLIMETÁLICOS DEL NORTE S.A.C</div>
+    <div class="subheader">MIN - CARD DIGITAL</div>
     <div class="main">
-
         <div class="info">
-
-            <div class="badge">
-                Tarjeta de Identificación
-            </div>
-
+            <div class="badge">Tarjeta de Identificación</div>
             <table>
-
-                <tr>
-                    <td class="label">Nombre</td>
-                    <td>: {empleado_datos.get('Nombre','')}</td>
-                </tr>
-
-                <tr>
-                    <td class="label">MIN-CARD</td>
-                    <td>: {empleado_datos.get('MIN-CARD','')}</td>
-                </tr>
-
-                <tr>
-                    <td class="label">Área</td>
-                    <td>: {empleado_datos.get('Área','')}</td>
-                </tr>
-
-                <tr>
-                    <td class="label">Turno</td>
-                    <td>: {empleado_datos.get('Turno','')}</td>
-                </tr>
-
-                <tr>
-                    <td class="label">Equipo</td>
-                    <td>: {empleado_datos.get('Equipo','')}</td>
-                </tr>
-
-                <tr>
-                    <td class="label">Tareas</td>
-                    <td>: {tareas}</td>
-                </tr>
-
+                <tr><td class="label">Nombre</td><td>: {empleado_datos.get('Nombre','')}</td></tr>
+                <tr><td class="label">MIN-CARD</td><td>: {empleado_datos.get('MIN-CARD','')}</td></tr>
+                <tr><td class="label">Área</td><td>: {empleado_datos.get('Área','')}</td></tr>
+                <tr><td class="label">Turno</td><td>: {empleado_datos.get('Turno','')}</td></tr>
+                <tr><td class="label">Equipo</td><td>: {empleado_datos.get('Equipo','')}</td></tr>
+                <tr><td class="label">Tareas</td><td>: {tareas}</td></tr>
             </table>
-
-            {
-            f'''
-            <div class="alert">
-                ⚠ ZONA RESTRINGIDA: {area_restringida}
-            </div>
-            '''
-            if tiene_restriccion else ''
-            }
-
+            {f'<div class="alert">⚠ ZONA RESTRINGIDA: {area_restringida}</div>' if tiene_restriccion else ''}
         </div>
-
-        <div class="qr-panel">
-
-            <img src="data:image/png;base64,{qr_b64}">
-
-            <div class="card-id">
-                {empleado_datos.get('MIN-CARD','')}
-            </div>
-
+        <div class="media-panel">
+            {etiqueta_foto}
+            <img class="qr-code" src="data:image/png;base64,{qr_b64}">
         </div>
-
     </div>
-
-    <div class="footer">
-        Documento generado por Sistema MIN-CARD
-    </div>
-
+    <div class="footer">Documento generado por Sistema MIN-CARD</div>
 </div>
-
 </body>
 </html>
 """
@@ -363,9 +166,7 @@ body {{
         mime="text/html", 
         use_container_width=True
     )
-    
     st.caption("💡 *Nota: Si al imprimir no ves los colores, asegúrate de activar la opción 'Gráficos de fondo' en la configuración de la impresora.*")
-
     if st.button("Cerrar"):
         st.rerun()
 
@@ -384,7 +185,6 @@ def render_admin():
     if "editing_ope_id" not in st.session_state:
         st.session_state.editing_ope_id = None
 
-    inicializar_estructura_db()
     st.subheader("⚙️ Panel de Configuración Inicial (CRUD)")
     
     tab_emp, tab_are, tab_tur, tab_maq, tab_car, tab_ope = st.tabs([
@@ -396,7 +196,6 @@ def render_admin():
     # =========================================================================
     with tab_are:
         col_izq, col_der = st.columns(2)
-        
         with col_izq:
             st.markdown("##### 📝 Registrar Nueva Área")
             with st.form("f_areas", clear_on_submit=True):
@@ -415,7 +214,6 @@ def render_admin():
                 
                 if df_area_data is not None and not df_area_data.empty:
                     datos_area = df_area_data.iloc[0]
-                    
                     with st.form("f_edit_area_dinamico"):
                         st.markdown(f"**Modificando el Área ID:** `{area_id_edit}`")
                         new_nom = st.text_input("Nombre de la Zona", value=datos_area['nombre'])
@@ -434,11 +232,10 @@ def render_admin():
                                 st.rerun()
             else:
                 st.markdown("##### 💡 Centro de Operaciones de Áreas")
-                st.info("Para gestionar una zona de trabajo, usa los controles interactivos de la lista inferior:\n\n- Modificación activa con el lápiz (✏️).\n- Baja/Alta segura con el borrado lógico (🗑️ / 🔄).")
+                st.info("Para gestionar una zona de trabajo, usa los controles interactivos de la lista inferior.")
                 
         st.markdown("---")
         st.subheader("📋 Listado Maestro de Áreas y Zonas")
-        
         df_view = ejecutar_query("SELECT id, nombre, es_restringida, activo FROM areas", retornar_datos=True)
         if df_view is not None and not df_view.empty:
             grid_head = st.columns([1, 3, 2, 2, 2])
@@ -457,31 +254,28 @@ def render_admin():
                 grid_row[3].caption("🟢 Activo" if row['activo'] == 1 else "❌ Inactivo")
                 
                 col_btn_edit, col_btn_del = grid_row[4].columns(2)
-                if col_btn_edit.button("✏️", key=f"edit_area_{row['id']}", help="Cargar en formulario para editar"):
+                if col_btn_edit.button("✏️", key=f"edit_area_{row['id']}"):
                     st.session_state.editing_area_id = row['id']
                     st.rerun()
                     
                 if row['activo'] == 1:
-                    if col_btn_del.button("🗑️", key=f"del_area_{row['id']}", help="Desactivar área"):
+                    if col_btn_del.button("🗑️", key=f"del_area_{row['id']}"):
                         ejecutar_query("UPDATE areas SET activo = 0 WHERE id = ?", (row['id'],))
                         if st.session_state.editing_area_id == row['id']:
                             st.session_state.editing_area_id = None
                         st.toast(f"🗑️ Área inactivada: {row['nombre']}")
                         st.rerun()
                 else:
-                    if col_btn_del.button("🔄", key=f"react_area_{row['id']}", help="Reactivar área"):
+                    if col_btn_del.button("🔄", key=f"react_area_{row['id']}"):
                         ejecutar_query("UPDATE areas SET activo = 1 WHERE id = ?", (row['id'],))
                         st.toast(f"🔄 Área reactivada: {row['nombre']}")
                         st.rerun()
-        else:
-            st.info("No existen áreas registradas en el sistema.")
 
     # =========================================================================
     # --- PESTAÑA TURNOS ---
     # =========================================================================
     with tab_tur:
         col_izq, col_der = st.columns(2)
-        
         with col_izq:
             st.markdown("##### 📝 Registrar Nuevo Turno")
             with st.form("f_turnos", clear_on_submit=True):
@@ -501,7 +295,6 @@ def render_admin():
                 
                 if df_turno_data is not None and not df_turno_data.empty:
                     datos_turno = df_turno_data.iloc[0]
-                    
                     with st.form("f_edit_turno_dinamico"):
                         st.markdown(f"**Modificando Turno ID:** `{turno_id_edit}`")
                         new_nom_t = st.text_input("Nombre del Turno", value=datos_turno['nombre'])
@@ -521,11 +314,10 @@ def render_admin():
                                 st.rerun()
             else:
                 st.markdown("##### 💡 Centro de Operaciones de Turnos")
-                st.info("Para gestionar un turno de trabajo, usa los controles interactivos de la lista inferior:\n\n- Modificación activa con el lápiz (✏️).\n- Baja/Alta segura con el borrado lógico (🗑️ / 🔄).")
+                st.info("Gestión de turnos de trabajo interactiva.")
                 
         st.markdown("---")
         st.subheader("📋 Listado Maestro de Turnos")
-        
         df_view = ejecutar_query("SELECT id, nombre, hora_inicio, hora_fin, activo FROM turnos", retornar_datos=True)
         if df_view is not None and not df_view.empty:
             grid_head = st.columns([1, 3, 2, 2, 2])
@@ -535,40 +327,32 @@ def render_admin():
             grid_head[3].markdown("**Estado**")
             grid_head[4].markdown("**Acción**")
             st.markdown("<hr style='margin: 5px 0px 15px 0px; border-color: gray;'>", unsafe_allow_html=True)
-            
             for _, row in df_view.iterrows():
                 grid_row = st.columns([1, 3, 2, 2, 2])
                 grid_row[0].write(str(row['id']))
                 grid_row[1].write(row['nombre'])
                 grid_row[2].write(f"{row['hora_inicio']} - {row['hora_fin']}")
                 grid_row[3].caption("🟢 Activo" if row['activo'] == 1 else "❌ Inactivo")
-                
                 col_btn_edit, col_btn_del = grid_row[4].columns(2)
                 if col_btn_edit.button("✏️", key=f"edit_tur_{row['id']}"):
                     st.session_state.editing_turno_id = row['id']
                     st.rerun()
-                    
                 if row['activo'] == 1:
                     if col_btn_del.button("🗑️", key=f"del_tur_{row['id']}"):
                         ejecutar_query("UPDATE turnos SET activo = 0 WHERE id = ?", (row['id'],))
                         if st.session_state.editing_turno_id == row['id']:
                             st.session_state.editing_turno_id = None
-                        st.toast(f"🗑️ Turno inactivado: {row['nombre']}")
                         st.rerun()
                 else:
                     if col_btn_del.button("🔄", key=f"react_tur_{row['id']}"):
                         ejecutar_query("UPDATE turnos SET activo = 1 WHERE id = ?", (row['id'],))
-                        st.toast(f"🔄 Turno reactivado: {row['nombre']}")
                         st.rerun()
-        else:
-            st.info("No existen turnos registrados.")
 
     # =========================================================================
     # --- PESTAÑA MAQUINARIA ---
     # =========================================================================
     with tab_maq:
         col_izq, col_der = st.columns(2)
-        
         with col_izq:
             st.markdown("##### 📝 Registrar Equipo")
             with st.form("f_maq", clear_on_submit=True):
@@ -578,27 +362,22 @@ def render_admin():
                     ejecutar_query("INSERT INTO maquinarias (modelo, codigo_interno, activo) VALUES (?, ?, 1) ON CONFLICT(codigo_interno) DO UPDATE SET activo=1, modelo=?", (mod.strip(), cod.strip(), mod.strip()))
                     st.success("Equipo registrado con éxito.")
                     st.rerun()
-                    
         with col_der:
             if st.session_state.editing_maq_id is not None:
-                st.markdown("##### ✏️ Modificar Equipo Seleccionado")
+                st.markdown("##### ✏️ Modificar Equipo")
                 maq_id_edit = st.session_state.editing_maq_id
                 df_maq_data = ejecutar_query("SELECT * FROM maquinarias WHERE id = ?", (maq_id_edit,), retornar_datos=True)
-                
                 if df_maq_data is not None and not df_maq_data.empty:
                     datos_maq = df_maq_data.iloc[0]
-                    
                     with st.form("f_edit_maq_dinamico"):
                         st.markdown(f"**Modificando Equipo ID:** `{maq_id_edit}`")
                         new_mod = st.text_input("Modelo", value=datos_maq['modelo'])
                         new_cod = st.text_input("Código Interno (Único)", value=datos_maq['codigo_interno'])
-                        
                         col_b1, col_b2 = st.columns(2)
                         with col_b1:
-                            if st.form_submit_button("💾 Guardar Cambios"):
+                            if st.form_submit_button("💾 Guardar"):
                                 ejecutar_query("UPDATE maquinarias SET modelo=?, codigo_interno=? WHERE id=?", (new_mod.strip(), new_cod.strip(), maq_id_edit))
                                 st.session_state.editing_maq_id = None
-                                st.success("Cambios aplicados correctamente.")
                                 st.rerun()
                         with col_b2:
                             if st.form_submit_button("❌ Cancelar"):
@@ -606,11 +385,9 @@ def render_admin():
                                 st.rerun()
             else:
                 st.markdown("##### 💡 Centro de Operaciones de Maquinaria")
-                st.info("Para gestionar maquinaria, usa los controles interactivos de la lista inferior:\n\n- Modificación activa con el lápiz (✏️).\n- Baja/Alta segura con el borrado lógico (🗑️ / 🔄).")
-                
+                st.info("Gestión de equipos.")
         st.markdown("---")
         st.subheader("📋 Listado Maestro de Maquinaria")
-        
         df_view = ejecutar_query("SELECT id, modelo, codigo_interno, activo FROM maquinarias", retornar_datos=True)
         if df_view is not None and not df_view.empty:
             grid_head = st.columns([1, 3, 2, 2, 2])
@@ -620,40 +397,32 @@ def render_admin():
             grid_head[3].markdown("**Estado**")
             grid_head[4].markdown("**Acción**")
             st.markdown("<hr style='margin: 5px 0px 15px 0px; border-color: gray;'>", unsafe_allow_html=True)
-            
             for _, row in df_view.iterrows():
                 grid_row = st.columns([1, 3, 2, 2, 2])
                 grid_row[0].write(str(row['id']))
                 grid_row[1].write(row['modelo'])
                 grid_row[2].write(row['codigo_interno'])
                 grid_row[3].caption("🟢 Activo" if row['activo'] == 1 else "❌ Inactivo")
-                
                 col_btn_edit, col_btn_del = grid_row[4].columns(2)
                 if col_btn_edit.button("✏️", key=f"edit_maq_{row['id']}"):
                     st.session_state.editing_maq_id = row['id']
                     st.rerun()
-                    
                 if row['activo'] == 1:
                     if col_btn_del.button("🗑️", key=f"del_maq_{row['id']}"):
                         ejecutar_query("UPDATE maquinarias SET activo = 0 WHERE id = ?", (row['id'],))
                         if st.session_state.editing_maq_id == row['id']:
                             st.session_state.editing_maq_id = None
-                        st.toast(f"🗑️ Equipo inactivado: {row['modelo']}")
                         st.rerun()
                 else:
                     if col_btn_del.button("🔄", key=f"react_maq_{row['id']}"):
                         ejecutar_query("UPDATE maquinarias SET activo = 1 WHERE id = ?", (row['id'],))
-                        st.toast(f"🔄 Equipo reactivado: {row['modelo']}")
                         st.rerun()
-        else:
-            st.info("No existen maquinarias registradas.")
 
     # =========================================================================
     # --- PESTAÑA CARGOS ---
     # =========================================================================
     with tab_car:
         col_izq, col_der = st.columns(2)
-        
         with col_izq:
             st.markdown("##### 📝 Registrar Cargo")
             with st.form("f_cargo", clear_on_submit=True):
@@ -662,79 +431,59 @@ def render_admin():
                     ejecutar_query("INSERT INTO cargos (nombre, activo) VALUES (?, 1) ON CONFLICT(nombre) DO UPDATE SET activo=1", (nom_c.strip(),))
                     st.success("Cargo añadido con éxito.")
                     st.rerun()
-                    
         with col_der:
             if st.session_state.editing_cargo_id is not None:
-                st.markdown("##### ✏️ Modificar Cargo Seleccionado")
+                st.markdown("##### ✏️ Modificar Cargo")
                 cargo_id_edit = st.session_state.editing_cargo_id
                 df_cargo_data = ejecutar_query("SELECT * FROM cargos WHERE id = ?", (cargo_id_edit,), retornar_datos=True)
-                
                 if df_cargo_data is not None and not df_cargo_data.empty:
                     datos_cargo = df_cargo_data.iloc[0]
-                    
                     with st.form("f_edit_cargo_dinamico"):
-                        st.markdown(f"**Modificando Cargo ID:** `{cargo_id_edit}`")
                         new_car = st.text_input("Nombre del Cargo", value=datos_cargo['nombre'])
-                        
                         col_b1, col_b2 = st.columns(2)
                         with col_b1:
-                            if st.form_submit_button("💾 Guardar Cambios"):
+                            if st.form_submit_button("💾 Guardar"):
                                 ejecutar_query("UPDATE cargos SET nombre=? WHERE id=?", (new_car.strip(), cargo_id_edit))
                                 st.session_state.editing_cargo_id = None
-                                st.success("Cambios aplicados correctamente.")
                                 st.rerun()
                         with col_b2:
                             if st.form_submit_button("❌ Cancelar"):
                                 st.session_state.editing_cargo_id = None
                                 st.rerun()
             else:
-                st.markdown("##### 💡 Centro de Operaciones de Cargos")
-                st.info("Para gestionar un cargo operativo, usa los controles interactivos de la lista inferior:\n\n- Modificación activa con el lápiz (✏️).\n- Baja/Alta segura con el borrado lógico (🗑️ / 🔄).")
-                
+                st.info("Gestión de cargos operativos.")
         st.markdown("---")
-        st.subheader("📋 Listado Maestro de Cargos")
-        
         df_view = ejecutar_query("SELECT id, nombre, activo FROM cargos", retornar_datos=True)
         if df_view is not None and not df_view.empty:
             grid_head = st.columns([1, 5, 2, 2])
             grid_head[0].markdown("**ID**")
-            grid_head[1].markdown("**Cargo Operativo**")
+            grid_head[1].markdown("**Cargo**")
             grid_head[2].markdown("**Estado**")
             grid_head[3].markdown("**Acción**")
-            st.markdown("<hr style='margin: 5px 0px 15px 0px; border-color: gray;'>", unsafe_allow_html=True)
-            
+            st.markdown("<hr style='margin: 5px 0px; border-color: gray;'>", unsafe_allow_html=True)
             for _, row in df_view.iterrows():
                 grid_row = st.columns([1, 5, 2, 2])
                 grid_row[0].write(str(row['id']))
                 grid_row[1].write(row['nombre'])
                 grid_row[2].caption("🟢 Activo" if row['activo'] == 1 else "❌ Inactivo")
-                
                 col_btn_edit, col_btn_del = grid_row[3].columns(2)
                 if col_btn_edit.button("✏️", key=f"edit_car_{row['id']}"):
                     st.session_state.editing_cargo_id = row['id']
                     st.rerun()
-                    
                 if row['activo'] == 1:
                     if col_btn_del.button("🗑️", key=f"del_car_{row['id']}"):
                         ejecutar_query("UPDATE cargos SET activo = 0 WHERE id = ?", (row['id'],))
-                        if st.session_state.editing_cargo_id == row['id']:
-                            st.session_state.editing_cargo_id = None
-                        st.toast(f"🗑️ Cargo inactivado: {row['nombre']}")
                         st.rerun()
                 else:
                     if col_btn_del.button("🔄", key=f"react_car_{row['id']}"):
                         ejecutar_query("UPDATE cargos SET activo = 1 WHERE id = ?", (row['id'],))
-                        st.toast(f"🔄 Cargo reactivado: {row['nombre']}")
                         st.rerun()
-        else:
-            st.info("No hay cargos operativos activos.")
 
     # =========================================================================
     # --- PESTAÑA CATÁLOGO DE TAREAS ---
     # =========================================================================
     with tab_ope:
         col_izq, col_der = st.columns(2)
-        
         with col_izq:
             st.markdown("##### 📝 Registrar Actividad")
             with st.form("f_ope", clear_on_submit=True):
@@ -743,72 +492,53 @@ def render_admin():
                     ejecutar_query("INSERT INTO operaciones (nombre, activo) VALUES (?, 1) ON CONFLICT(nombre) DO UPDATE SET activo=1", (ope.strip(),))
                     st.success("Tarea añadió con éxito.")
                     st.rerun()
-                    
         with col_der:
             if st.session_state.editing_ope_id is not None:
-                st.markdown("##### ✏️ Modificar Tarea Seleccionada")
+                st.markdown("##### ✏️ Modificar Tarea")
                 ope_id_edit = st.session_state.editing_ope_id
                 df_ope_data = ejecutar_query("SELECT * FROM operaciones WHERE id = ?", (ope_id_edit,), retornar_datos=True)
-                
                 if df_ope_data is not None and not df_ope_data.empty:
                     datos_ope = df_ope_data.iloc[0]
-                    
                     with st.form("f_edit_ope_dinamico"):
-                        st.markdown(f"**Modificando Tarea ID:** `{ope_id_edit}`")
                         new_ope = st.text_input("Nombre de la Actividad", value=datos_ope['nombre'])
-                        
                         col_b1, col_b2 = st.columns(2)
                         with col_b1:
-                            if st.form_submit_button("💾 Guardar Cambios"):
+                            if st.form_submit_button("💾 Guardar"):
                                 ejecutar_query("UPDATE operaciones SET nombre=? WHERE id=?", (new_ope.strip(), ope_id_edit))
                                 st.session_state.editing_ope_id = None
-                                st.success("Cambios aplicados correctamente.")
                                 st.rerun()
                         with col_b2:
                             if st.form_submit_button("❌ Cancelar"):
                                 st.session_state.editing_ope_id = None
                                 st.rerun()
             else:
-                st.markdown("##### 💡 Centro de Operaciones de Tareas")
-                st.info("Para gestionar una tarea general, usa los controles interactivos de la lista inferior:\n\n- Modificación activa con el lápiz (✏️).\n- Baja/Alta segura con el borrado lógico (🗑️ / 🔄).")
-                
+                st.info("Gestión de tareas/actividades.")
         st.markdown("---")
-        st.subheader("📋 Listado Maestro de Tareas / Actividades")
-        
         df_view = ejecutar_query("SELECT id, nombre, activo FROM operaciones", retornar_datos=True)
         if df_view is not None and not df_view.empty:
             grid_head = st.columns([1, 5, 2, 2])
             grid_head[0].markdown("**ID**")
-            grid_head[1].markdown("**Tarea / Actividad**")
+            grid_head[1].markdown("**Tarea**")
             grid_head[2].markdown("**Estado**")
             grid_head[3].markdown("**Acción**")
-            st.markdown("<hr style='margin: 5px 0px 15px 0px; border-color: gray;'>", unsafe_allow_html=True)
-            
+            st.markdown("<hr style='margin: 5px 0px; border-color: gray;'>", unsafe_allow_html=True)
             for _, row in df_view.iterrows():
                 grid_row = st.columns([1, 5, 2, 2])
                 grid_row[0].write(str(row['id']))
                 grid_row[1].write(row['nombre'])
                 grid_row[2].caption("🟢 Activo" if row['activo'] == 1 else "❌ Inactivo")
-                
                 col_btn_edit, col_btn_del = grid_row[3].columns(2)
                 if col_btn_edit.button("✏️", key=f"edit_ope_{row['id']}"):
                     st.session_state.editing_ope_id = row['id']
                     st.rerun()
-                    
                 if row['activo'] == 1:
                     if col_btn_del.button("🗑️", key=f"del_ope_{row['id']}"):
                         ejecutar_query("UPDATE operaciones SET activo = 0 WHERE id = ?", (row['id'],))
-                        if st.session_state.editing_ope_id == row['id']:
-                            st.session_state.editing_ope_id = None
-                        st.toast(f"🗑️ Actividad inactivada: {row['nombre']}")
                         st.rerun()
                 else:
                     if col_btn_del.button("🔄", key=f"react_ope_{row['id']}"):
                         ejecutar_query("UPDATE operaciones SET activo = 1 WHERE id = ?", (row['id'],))
-                        st.toast(f"🔄 Actividad reactivada: {row['nombre']}")
                         st.rerun()
-        else:
-            st.info("No hay tareas registradas activas.")
 
     # =========================================================================
     # --- PESTAÑA PERSONAL Y MIN-CARD ---
@@ -832,9 +562,18 @@ def render_admin():
 
             with col1:
                 st.markdown("##### 📝 Registrar Nuevo Trabajador")
+                
                 with st.form("f_emp", clear_on_submit=True):
                     uid = st.text_input("Código MIN-CARD (ID Único)")
                     nombre = st.text_input("Nombre completo")
+                    
+                    st.markdown("**📸 Fotografía del Empleado**")
+                    # Añadimos un interruptor para que la cámara no inicie sola
+                    foto_capturada = None
+                    with st.expander("📸 Desplegar para activar cámara"):
+                        foto_capturada = st.camera_input("Capturar nueva foto")
+                    foto_subida = st.file_uploader("O subir nueva foto", type=["jpg", "png", "jpeg"], key="upd_foto_nuevo")
+                    
                     a_sel = st.selectbox("Asignar Área Común", options=areas_comunes['id'].tolist(), format_func=lambda x: areas_comunes[areas_comunes['id']==x]['nombre'].values[0])
                     a_rest_sel = st.selectbox("Asignar Área Restringida (Opcional)", options=opciones_rest_ids, format_func=mapear_area_restringida)
                     t_sel = st.selectbox("Asignar Turno", options=turnos['id'].tolist(), format_func=lambda x: turnos[turnos['id']==x]['nombre'].values[0])
@@ -847,8 +586,19 @@ def render_admin():
                     )
                     
                     if st.form_submit_button("Emitir MIN-CARD") and uid and nombre:
-                        ejecutar_query("INSERT OR REPLACE INTO empleados (uid_tarjeta, nombre, turno_id, area_id, maquinaria_id, area_restringida_id, activo) VALUES (?, ?, ?, ?, ?, ?, 1)", 
-                                       (uid.strip(), nombre.strip(), t_sel, a_sel, m_sel, a_rest_sel))
+                        foto_b64 = None
+                        if foto_capturada:
+                            foto_b64 = base64.b64encode(foto_capturada.getvalue()).decode("utf-8")
+                        elif foto_subida:
+                            foto_b64 = base64.b64encode(foto_subida.getvalue()).decode("utf-8")
+
+                        # Se hace UPSERT por uid_tarjeta
+                        ejecutar_query('''
+                            INSERT OR REPLACE INTO empleados 
+                            (uid_tarjeta, nombre, turno_id, area_id, maquinaria_id, area_restringida_id, foto, activo) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                            ''', (uid.strip(), nombre.strip(), t_sel, a_sel, m_sel, a_rest_sel, foto_b64))
+                        
                         ejecutar_query("DELETE FROM empleado_operaciones WHERE empleado_uid = ?", (uid.strip(),))
                         for op_id in ops_seleccionadas:
                             ejecutar_query("INSERT INTO empleado_operaciones (empleado_uid, operacion_id) VALUES (?, ?)", (uid.strip(), op_id))
@@ -870,6 +620,14 @@ def render_admin():
                             st.markdown(f"**Modificando la MIN-CARD:** `{emp_uid}`")
                             nuevo_nombre = st.text_input("Nombre Completo", value=datos_emp['nombre'])
                             
+                            st.markdown("**📸 Actualizar Fotografía (Opcional)**")
+
+                            nueva_foto_capturada = None
+                            with st.expander("📸 Desplegar para activar cámara"):
+                                nueva_foto_capturada = st.camera_input("Capturar nueva foto", key="cam_edit")
+
+                            nueva_foto_subida = st.file_uploader("O subir nueva foto", type=["jpg", "png", "jpeg"], key="upd_foto_edit")
+
                             idx_area = areas_comunes['id'].tolist().index(datos_emp['area_id']) if datos_emp['area_id'] in areas_comunes['id'].tolist() else 0
                             val_rest_db = datos_emp['area_restringida_id'] if 'area_restringida_id' in datos_emp else 0
                             idx_area_rest = opciones_rest_ids.index(val_rest_db) if val_rest_db in opciones_rest_ids else 0
@@ -891,10 +649,17 @@ def render_admin():
                             col_b1, col_b2 = st.columns(2)
                             with col_b1:
                                 if st.form_submit_button("💾 Guardar Cambios"):
+                                    # Gestionar foto
+                                    foto_final = datos_emp['foto'] # Mantener la actual por defecto
+                                    if nueva_foto_capturada:
+                                        foto_final = base64.b64encode(nueva_foto_capturada.getvalue()).decode("utf-8")
+                                    elif nueva_foto_subida:
+                                        foto_final = base64.b64encode(nueva_foto_subida.getvalue()).decode("utf-8")
+
                                     ejecutar_query('''
-                                        UPDATE empleados SET nombre=?, turno_id=?, area_id=?, maquinaria_id=?, area_restringida_id=? 
+                                        UPDATE empleados SET nombre=?, turno_id=?, area_id=?, maquinaria_id=?, area_restringida_id=?, foto=? 
                                         WHERE uid_tarjeta=?
-                                    ''', (nuevo_nombre.strip(), nuevo_t_sel, nuevo_a_sel, nuevo_m_sel, nuevo_a_rest_sel, emp_uid))
+                                    ''', (nuevo_nombre.strip(), nuevo_t_sel, nuevo_a_sel, nuevo_m_sel, nuevo_a_rest_sel, foto_final, emp_uid))
                                     ejecutar_query("DELETE FROM empleado_operaciones WHERE empleado_uid = ?", (emp_uid,))
                                     for op_id in nuevas_ops:
                                         ejecutar_query("INSERT INTO empleado_operaciones (empleado_uid, operacion_id) VALUES (?, ?)", (emp_uid, op_id))
@@ -905,21 +670,20 @@ def render_admin():
                                 if st.form_submit_button("❌ Cancelar"):
                                     st.session_state.editing_uid = None
                                     st.rerun()
-                    else:
-                        st.session_state.editing_uid = None
                 else:
                     st.markdown("##### 💡 Centro de Operaciones de Personal")
-                    st.info("Para gestionar la información de un trabajador, usa los botones de la tabla inferior:\n\n- Acciones visuales con el ojo (👁️).\n- Modificación interactiva con el lápiz (✏️).\n- Baja/Alta segura con el borrado lógico (🗑️ / 🔄).")
+                    st.info("Para gestionar la información de un trabajador, usa los botones de la tabla inferior.")
 
             # --- TABLA DE PERSONAL GENERAL ---
             st.markdown("---")
             st.subheader("📋 Listado Maestro de Personal y Tarjetas")
             
             df_lista = ejecutar_query('''
-                SELECT e.uid_tarjeta as 'MIN-CARD', e.nombre as 'Nombre', t.nombre as 'Turno', a.nombre as 'Área', 
+                SELECT e.idempleado as 'ID', e.uid_tarjeta as 'MIN-CARD', e.nombre as 'Nombre', t.nombre as 'Turno', a.nombre as 'Área', 
                 COALESCE((SELECT ar.nombre FROM areas ar WHERE ar.id = e.area_restringida_id), 'Ninguna') as 'Área Restringida',
                 m.codigo_interno as 'Equipo',
                 (SELECT GROUP_CONCAT(op.nombre, ', ') FROM empleado_operaciones eo JOIN operaciones op ON eo.operacion_id = op.id WHERE eo.empleado_uid = e.uid_tarjeta) as 'Tareas Asignadas',
+                e.foto as 'Foto',
                 e.activo as 'Activo'
                 FROM empleados e 
                 JOIN turnos t ON e.turno_id=t.id 
@@ -928,30 +692,32 @@ def render_admin():
             ''', retornar_datos=True)
             
             if df_lista is not None and not df_lista.empty:
-                grid_head = st.columns([1, 1.8, 0.9, 0.9, 1.1, 0.8, 1.8, 0.9, 1.4])
-                grid_head[0].markdown("**MIN-CARD**")
-                grid_head[1].markdown("**Nombre**")
-                grid_head[2].markdown("**Turno**")
-                grid_head[3].markdown("**Área**")
-                grid_head[4].markdown("**Zona Rel.**")
-                grid_head[5].markdown("**Equipo**")
-                grid_head[6].markdown("**Tareas**")
-                grid_head[7].markdown("**Estado**")
-                grid_head[8].markdown("**Acción**")
+                grid_head = st.columns([0.6, 1.2, 1.8, 0.9, 0.9, 1.1, 0.8, 1.8, 0.8, 1.2])
+                grid_head[0].markdown("**ID**")
+                grid_head[1].markdown("**MIN-CARD**")
+                grid_head[2].markdown("**Nombre**")
+                grid_head[3].markdown("**Turno**")
+                grid_head[4].markdown("**Área**")
+                grid_head[5].markdown("**Zona Rel.**")
+                grid_head[6].markdown("**Equipo**")
+                grid_head[7].markdown("**Tareas**")
+                grid_head[8].markdown("**Estado**")
+                grid_head[9].markdown("**Acción**")
                 st.markdown("<hr style='margin: 5px 0px 15px 0px; border-color: gray;'>", unsafe_allow_html=True)
                 
                 for _, row in df_lista.iterrows():
-                    grid_row = st.columns([1, 1.8, 0.9, 0.9, 1.1, 0.8, 1.8, 0.9, 1.4])
-                    grid_row[0].write(str(row['MIN-CARD']))
-                    grid_row[1].write(row['Nombre'])
-                    grid_row[2].write(row['Turno'])
-                    grid_row[3].write(row['Área'])
-                    grid_row[4].write(row['Área Restringida'])
-                    grid_row[5].write(row['Equipo'])
-                    grid_row[6].write(row['Tareas Asignadas'] if row['Tareas Asignadas'] else "Sin tareas")
-                    grid_row[7].caption("🟢 Activo" if row['Activo'] == 1 else "❌ Inactivo")
+                    grid_row = st.columns([0.6, 1.2, 1.8, 0.9, 0.9, 1.1, 0.8, 1.8, 0.8, 1.2])
+                    grid_row[0].write(str(row['ID']))
+                    grid_row[1].write(str(row['MIN-CARD']))
+                    grid_row[2].write(row['Nombre'])
+                    grid_row[3].write(row['Turno'])
+                    grid_row[4].write(row['Área'])
+                    grid_row[5].write(row['Área Restringida'])
+                    grid_row[6].write(row['Equipo'])
+                    grid_row[7].write(row['Tareas Asignadas'] if row['Tareas Asignadas'] else "Sin tareas")
+                    grid_row[8].caption("🟢 Act." if row['Activo'] == 1 else "❌ Inac.")
                     
-                    col_btn_view, col_btn_edit, col_btn_del = grid_row[8].columns(3)
+                    col_btn_view, col_btn_edit, col_btn_del = grid_row[9].columns(3)
                     if col_btn_view.button("👁️", key=f"view_{row['MIN-CARD']}"):
                         mostrar_modal_qr(row)
                     if col_btn_edit.button("✏️", key=f"edit_{row['MIN-CARD']}"):

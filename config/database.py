@@ -82,14 +82,17 @@ def inicializar_sistema():
         )
     ''')
     
-    # 5. Tabla Empleados
+    # 5. Tabla Empleados (MODIFICADA: idempleado PK, foto TEXT)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS empleados (
-            uid_tarjeta TEXT PRIMARY KEY,
+            idempleado INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid_tarjeta TEXT UNIQUE NOT NULL,
             nombre TEXT NOT NULL,
             turno_id INTEGER,
             area_id INTEGER,
             maquinaria_id INTEGER,
+            area_restringida_id INTEGER DEFAULT 0,
+            foto TEXT,
             activo INTEGER DEFAULT 1,
             FOREIGN KEY(turno_id) REFERENCES turnos(id),
             FOREIGN KEY(area_id) REFERENCES areas(id),
