@@ -17,6 +17,6 @@ qrcode==7.4.2
 pypdf==4.2.0
 
 # Visión por Computadora y Lector QR (Punto de Control)
-opencv-python
+opencv-python-headless
 numpy
 pillow
